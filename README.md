@@ -1,5 +1,5 @@
 # cross-project-cluck
-A few lines of code to help identifyin cross project repo access.
+A few lines of code to help identifying cross project repo access.
 
 ```bash
 python cross_project_cluck.py --force-approve-all True
