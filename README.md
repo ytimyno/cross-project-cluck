@@ -1,5 +1,5 @@
 # cross-project-cluck
-A few lines of code to help identifyin cross project repo access.
+A few lines of code to help identifying cross project repo access.
 
 ```bash
 python cross_project_cluck.py --force-approve-all True
@@ -21,7 +21,7 @@ It outputs a JSON file and matching CSV. It also outputs a list of projects it f
         "project": "Project Accessed",
         "repo": "Repo Accessed",
         "branch": "Branch reference",
-        "cross_project": true | false,
+        "cross_project": false | true,
         "status": "OK" | "REVIEW"
     },
 ]
