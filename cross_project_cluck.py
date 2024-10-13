@@ -117,6 +117,7 @@ def discover_cross_project_access(project_id, full_project):
                             "run": self_run['_links']['web']['href'],
                             "project": resource['repository']['fullName'].split('/')[0],
                             "repo": resource['repository']['fullName'].split('/')[-1],
+                            "repo_id": resource['repository']['id'],
                             "branch": resource['refName'],
                             "cross_project": full_project['name'] == resource['repository']['fullName'].split('/')[0],
                             "status": 'REVIEW' if full_project['name'] != resource['repository']['fullName'].split('/')[0] else "OK"
@@ -129,11 +130,37 @@ def discover_cross_project_access(project_id, full_project):
 
     return project_repo_access
 
-def update_permissions(cross_project_access):
-    for row in cross_project_access:
+def deduplicate_entries(entries):
+    seen = set()
+    unique_entries = []
+
+    for entry in entries:
+        identifier = (entry['home_project'], entry['project'], entry['repo'], entry['cross_project'], entry['status'])
+
+        if identifier not in seen:
+            seen.add(identifier)
+            unique_entries.append(entry)
+
+    return unique_entries
+
+def update_permissions(cross_project_access, projects):
+    deduplicated_access = deduplicate_entries(cross_project_access)
+    for row in deduplicated_access:
         if row['status'] == "APPROVED":
-                print("grant access to project & repo")
+            for project_id, project_value in projects.items():
+                if project_value['name'] == row['project']:
+                    project = project_id
+
+            project_permissions_url = f"https://dev.azure.com/{organization}/{project}/_settings/permissions"
+            repository_url = f"https://dev.azure.com/{organization}/{project}/_settings/repositories?repo={row['repo_id']}"
+            print("\n")
+            print(f"1. Ensure the entity '{row['home_project']} Build Service ({organization})' has access to Project '{row['project']}' metadata level information.")
+            print(f"   Link: {project_permissions_url}\n")
+            print(f"2. Ensure the entity '{row['home_project']} Build Service ({organization})' has read access to the repository '{row['repo']}' in project '{row['project']}'.")
+            print(f"   Link: {repository_url}")
+
     return
+
 
 organization = config.organization
 pat_token = base64.b64encode(f":{config.pat_token}".encode()).decode()
@@ -189,4 +216,4 @@ if __name__ == "__main__":
                 row["status"] = "APPROVED"
 
         # UPDATE PERMISSIONS
-        update_permissions(cross_project_access_list)
+        update_permissions(cross_project_access_list, projects)
