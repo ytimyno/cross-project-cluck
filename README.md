@@ -6,7 +6,7 @@ Helps identify cross-project repo access in Azure DevOps.
 
 For each pipeline run harvested (API limited to latest 1000), it adds a row for each repository accessed. Determines if the access is cross-project. Sets the status to "REVIEW" for cross-project access or "OK" for same-project access.
 
-It outputs a JSON file and matching CSV. It also outputs a list of projects it found. Use the --simulate-approve-all flag to output a list of instructions if you were to set granular permissions at ADO level.
+It outputs a JSON file and matching CSV. It also outputs a list of projects it found. Use the --simulate-approve-all flag to output a list of instructions if you were to set granular permissions at repo level.
 
 ```json
 [
