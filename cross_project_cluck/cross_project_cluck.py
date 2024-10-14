@@ -36,7 +36,7 @@ def create_directory_if_not_exists(directory_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
 
-def get_projects(api_endpoint="projects", api_version="?api-version=7.1"):
+def get_projects(organization, pat_token, api_endpoint="projects", api_version="?api-version=7.1"):
         
     conn = http.client.HTTPSConnection("dev.azure.com")
 
@@ -72,7 +72,7 @@ def get_projects(api_endpoint="projects", api_version="?api-version=7.1"):
 
     return full_projects
 
-def discover_cross_project_access(project_id, full_project):
+def discover_cross_project_access(organization, pat_token, project_id, full_project):
 
     conn = http.client.HTTPSConnection("dev.azure.com")
 
@@ -164,7 +164,7 @@ def deduplicate_entries(entries):
 
     return unique_entries
 
-def simulate_update_permissions(cross_project_access, projects):
+def simulate_update_permissions(organization, cross_project_access, projects):
 
     instructions = [] 
     deduplicated_access = deduplicate_entries(cross_project_access)
@@ -229,8 +229,8 @@ def load_config_from_file(file_path="config.json"):
             return json.load(file)
     return {}
 
-# Main execution
-if __name__ == "__main__":
+
+def main():
 
     args = get_args()
     config = load_config_from_file("config.json")
@@ -257,11 +257,11 @@ if __name__ == "__main__":
 
     display_chicken_art()
 
-    projects = get_projects()
+    projects = get_projects(organization, pat_token)
     cross_project_access_list = []
 
     for project in projects:
-        cross_project_access_list.extend(discover_cross_project_access(project, projects[project]))
+        cross_project_access_list.extend(discover_cross_project_access(organization, pat_token, project, projects[project]))
 
     directory = f"outputs"
     create_directory_if_not_exists(directory)
@@ -297,10 +297,13 @@ if __name__ == "__main__":
                     row["status"] = "APPROVED"
 
             # UPDATE PERMISSIONS
-            instructions = simulate_update_permissions(cross_project_access_list, projects)
+            instructions = simulate_update_permissions(organization, cross_project_access_list, projects)
             directory = f"outputs"
             create_directory_if_not_exists(directory)
             file_name = f"{directory}/instructions.json"
             with open(file_name, 'w') as file:
                 json.dump(instructions, file, indent=4)
                 file.close()
+
+if __name__ == "__main__":
+    main()

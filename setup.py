@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="cross-project-cluck",              
-    version="1.0.0",                 
+    version="1.0.6",                 
     description="CLI tool to identify cross project repo access in Azure DevOps.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -15,5 +15,11 @@ setup(
         "Operating System :: OS Independent",
     ],
     license="GPLv3",
-    packages=find_packages()
+    packages=find_packages(),
+    py_modules = ['cross_project_cluck'],
+    entry_points={
+        'console_scripts': [
+            'cluck=cross_project_cluck:main',
+        ],
+    },
 )
