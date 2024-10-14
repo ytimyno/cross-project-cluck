@@ -1,11 +1,9 @@
 import requests
 import json
-import config
 import os
 import base64
 import csv
 import argparse
-from pprint import pprint
 
 def display_chicken_art():
     chicken_art = r"""
@@ -143,7 +141,7 @@ def deduplicate_entries(entries):
 
     return unique_entries
 
-def update_permissions(cross_project_access, projects):
+def simulate_update_permissions(cross_project_access, projects):
     deduplicated_access = deduplicate_entries(cross_project_access)
     for row in deduplicated_access:
         if row['status'] == "APPROVED":
@@ -162,17 +160,63 @@ def update_permissions(cross_project_access, projects):
     return
 
 
-organization = config.organization
-pat_token = base64.b64encode(f":{config.pat_token}".encode()).decode()
+def get_args():
+    # Argument parser
+    parser = argparse.ArgumentParser(description="CLI tool to identify cross project repo access in Azure DevOps.")
+
+    parser.add_argument(
+        '--simulate-approve-all', 
+        action='store_true',
+        help="Simulate actions if you were to approve all cross project access, setting any 'REVIEW' to 'APPROVED' and outputting the steps that need to be taken.", 
+    )
+
+    parser.add_argument(
+        "--organization",
+        type=str,
+        help="The organization name"
+    )
+    
+    parser.add_argument(
+        "--pat_token",
+        type=str,
+        help="The personal access token"
+    )
+
+    # Parse the arguments from the command line
+    return parser.parse_args()
+
+def load_config_from_file(file_path="config.json"):
+    # Load configurations from a JSON file
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    return {}
 
 # Main execution
 if __name__ == "__main__":
 
-    # Argument parser
-    parser = argparse.ArgumentParser(description="Process pipelines and manage cross-project repository access.")
-    parser.add_argument('--force-approve-all', help='Force approval of all pipeline access requests', default=False, type=bool)
-    args = parser.parse_args()
-    force_approve_all = args.force_approve_all
+    args = get_args()
+    config = load_config_from_file("config.json")
+
+    # Use environment variables or fall back to config file values or defaults
+    organization = (
+        args.organization or 
+        os.getenv("ORGANIZATION") or 
+        config.get("organization", "default_org")
+    )
+
+    pat_token_raw = (
+        args.pat_token or 
+        os.getenv("PAT_TOKEN") or 
+        config.get("pat_token", "default_token")
+    )
+
+    pat_token = base64.b64encode(f":{pat_token_raw}".encode()).decode()
+    simulate_approve_all = args.simulate_approve_all
+
+    if not organization:
+        print(f"Something went wrong - Provide a valid ADO organization via CLI, environment variables or config.JSON. [{organization}]")
+        exit()
 
     display_chicken_art()
 
@@ -194,26 +238,26 @@ if __name__ == "__main__":
     create_directory_if_not_exists(directory)
     csv_file = f"{directory}/cross_access.csv"
 
-    # Open the CSV file for writing
-    with open(csv_file, mode='w', newline='') as file:
-        # Create a CSV DictWriter object
-        writer = csv.DictWriter(file, fieldnames=cross_project_access_list[0].keys())
+    if cross_project_access_list:
 
-        # Write the header (column names)
-        writer.writeheader()
+        with open(csv_file, mode='w', newline='') as file:
+            # Create a CSV DictWriter object
+            writer = csv.DictWriter(file, fieldnames=cross_project_access_list[0].keys())
 
-        # Write the data rows
-        for row in cross_project_access_list:
-            writer.writerow(row)
-        
-        file.close()
+            # Write the header (column names)
+            writer.writeheader()
+
+            # Write the data rows
+            for row in cross_project_access_list:
+                writer.writerow(row)
+            
+            file.close()
 
 
+        if simulate_approve_all:
+            for row in cross_project_access_list:
+                if row["status"] == "REVIEW":
+                    row["status"] = "APPROVED"
 
-    if force_approve_all:
-        for row in cross_project_access_list:
-            if row["status"] == "REVIEW":
-                row["status"] = "APPROVED"
-
-        # UPDATE PERMISSIONS
-        update_permissions(cross_project_access_list, projects)
+            # UPDATE PERMISSIONS
+            simulate_update_permissions(cross_project_access_list, projects)

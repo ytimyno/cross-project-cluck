@@ -1,6 +1,7 @@
 *.log
 
 config.sh
+config.json
 config.py
 example_*
 policy/data/resources/*
