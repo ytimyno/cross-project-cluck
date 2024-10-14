@@ -15,6 +15,5 @@ setup(
         "Operating System :: OS Independent",
     ],
     license="GPLv3",
-    packages=find_packages(),
-    python_requires='>=3.6',
+    packages=find_packages()
 )
