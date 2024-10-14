@@ -1,4 +1,5 @@
-import requests
+import http.client
+from urllib.parse import urlparse
 import json
 import os
 import base64
@@ -36,95 +37,117 @@ def create_directory_if_not_exists(directory_path):
         os.makedirs(directory_path)
 
 def get_projects(api_endpoint="projects", api_version="?api-version=7.1"):
-
-        url = f"https://dev.azure.com/{organization}/_apis/{api_endpoint}{api_version}"
-
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Basic {pat_token}',
-        }
-
-        full_projects={}
-
-        try:
-            
-            # Make the GET request
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-
-            # Parse JSON response
-            data = response.json()
-
-            # Write output to a file named according to the resource type
-            directory = f"outputs"
-            create_directory_if_not_exists(directory)
-            file_name = f"{directory}/projects.json"
-            with open(file_name, 'w') as file:
-                json.dump(data, file, indent=4)
-
-            # Extract the mapping of project ID to project name
-            full_projects = {project['id']: project for project in data['value']}
-        except requests.exceptions.HTTPError as http_err:
-            print(f"\tHTTP error occurred: {http_err}")
-        except Exception as err:
-            print(f"\tAn error occurred: {err}")
-    
-        return full_projects
-
-def discover_cross_project_access(project_id, full_project):
+        
+    conn = http.client.HTTPSConnection("dev.azure.com")
 
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Basic {pat_token}',
     }
 
-    # Get all pipelines in the project
-    pipelines_url = f'https://dev.azure.com/{organization}/{project_id}/_apis/pipelines?api-version=7.1'
-    response = requests.get(pipelines_url, headers=headers)
-    pipelines = response.json().get('value', [])
+    full_projects={}
 
+    try:
+        conn.request("GET", f"/{organization}/_apis/{api_endpoint}{api_version}", headers=headers)
+        res = conn.getresponse()
+        response = res.read()
+
+        try:
+            data = json.loads(response)
+        except json.JSONDecodeError as e:
+            raise Exception(f"JSON Decode Error: {e}")
+
+        # Write output to a file named according to the resource type
+        directory = f"outputs"
+        create_directory_if_not_exists(directory)
+        file_name = f"{directory}/projects.json"
+        with open(file_name, 'w') as file:
+            json.dump(data, file, indent=4)
+
+        # Extract the mapping of project ID to project name
+        full_projects = {project['id']: project for project in data['value']}
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    return full_projects
+
+def discover_cross_project_access(project_id, full_project):
+
+    conn = http.client.HTTPSConnection("dev.azure.com")
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Basic {pat_token}',
+    }
 
     project_repo_access = []
-    for pipeline in pipelines:
-        # Get runs for each pipeline
-        runs_url = f'https://dev.azure.com/{organization}/{project_id}/_apis/pipelines/{pipeline["id"]}/runs?api-version=7.1'
-        runs_response = requests.get(runs_url, headers=headers)
-        runs = runs_response.json().get('value', [])
 
-        for run in runs:
+    try:
+        conn.request("GET", f"/{organization}/{project_id}/_apis/pipelines?api-version=7.1", headers=headers)
+        res = conn.getresponse()
+        response = res.read()
 
-            url = run['_links']['self']['href']
+        # Parse JSON response
+        try:
+            pipelines = json.loads(response).get('value', [])
+        except json.JSONDecodeError as e:
+            raise Exception(f"JSON Decode Error: {e}")
+        
 
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Basic {pat_token}',
-            }
-            
+        for pipeline in pipelines:
+            # Get runs for each pipeline
             try:
-                # Make the GET request 
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-
+                conn.request("GET", f"/{organization}/{project_id}/_apis/pipelines/{pipeline['id']}/runs?api-version=7.1", headers=headers)
+                res = conn.getresponse()
+                response = res.read()
                 # Parse JSON response
-                self_run = response.json()
+                try:
+                    runs = json.loads(response).get('value', [])
+                except json.JSONDecodeError as e:
+                    raise Exception(f"JSON Decode Error: {e}")
 
-                if "repositories" in self_run['resources'].keys():
-                    for resource in self_run['resources']['repositories'].values():
-                        project_repo_access.append({
-                            "home_project": full_project['name'],
-                            "run": self_run['_links']['web']['href'],
-                            "project": resource['repository']['fullName'].split('/')[0],
-                            "repo": resource['repository']['fullName'].split('/')[-1],
-                            "repo_id": resource['repository']['id'],
-                            "branch": resource['refName'],
-                            "cross_project": full_project['name'] == resource['repository']['fullName'].split('/')[0],
-                            "status": 'REVIEW' if full_project['name'] != resource['repository']['fullName'].split('/')[0] else "OK"
-                        })
-            
-            except requests.exceptions.HTTPError as http_err:
-                print(f"\tHTTP error occurred: {http_err}")
-            except Exception as err:
-                print(f"\tAn error occurred: {err}")
+                # Get self run for each run
+                for run in runs:
+
+                    url = run['_links']['self']['href']
+                    parsed_url = urlparse(url)
+
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': f'Basic {pat_token}',
+                    }
+                    
+                    try:
+                        conn.request("GET", parsed_url.path, headers=headers)
+                        res = conn.getresponse()
+                        response = res.read()
+
+                        # Parse JSON response
+                        try:
+                            self_run = json.loads(response)
+                        except json.JSONDecodeError as e:
+                            raise Exception(f"JSON Decode Error: {e}")
+
+                        if "repositories" in self_run['resources'].keys():
+                            for resource in self_run['resources']['repositories'].values():
+                                project_repo_access.append({
+                                    "home_project": full_project['name'],
+                                    "run": self_run['_links']['web']['href'],
+                                    "project": resource['repository']['fullName'].split('/')[0],
+                                    "repo": resource['repository']['fullName'].split('/')[-1],
+                                    "repo_id": resource['repository']['id'],
+                                    "branch": resource['refName'],
+                                    "cross_project": full_project['name'] == resource['repository']['fullName'].split('/')[0],
+                                    "status": 'REVIEW' if full_project['name'] != resource['repository']['fullName'].split('/')[0] else "OK"
+                                })
+
+                    except Exception as e:
+                        print(f"An error occurred: {e}")
+            except Exception as e:
+                print(f"An error occurred: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
     return project_repo_access
 
@@ -142,6 +165,8 @@ def deduplicate_entries(entries):
     return unique_entries
 
 def simulate_update_permissions(cross_project_access, projects):
+
+    instructions = [] 
     deduplicated_access = deduplicate_entries(cross_project_access)
     for row in deduplicated_access:
         if row['status'] == "APPROVED":
@@ -157,7 +182,19 @@ def simulate_update_permissions(cross_project_access, projects):
             print(f"2. Ensure the entity '{row['home_project']} Build Service ({organization})' has read access to the repository '{row['repo']}' in project '{row['project']}'.")
             print(f"   Link: {repository_url}")
 
-    return
+            instruction = {
+                "project_level": {
+                    "instruction": f"1. Ensure the entity '{row['home_project']} Build Service ({organization})' has access to Project '{row['project']}' metadata level information.",
+                    "link": project_permissions_url
+                },
+                "repo_level": {
+                    "instruction": f"2. Ensure the entity '{row['home_project']} Build Service ({organization})' has read access to the repository '{row['repo']}' in project '{row['project']}'.",
+                    "link": repository_url
+                }
+            }
+            instructions.append(instruction)
+
+    return instructions
 
 
 def get_args():
@@ -260,4 +297,10 @@ if __name__ == "__main__":
                     row["status"] = "APPROVED"
 
             # UPDATE PERMISSIONS
-            simulate_update_permissions(cross_project_access_list, projects)
+            instructions = simulate_update_permissions(cross_project_access_list, projects)
+            directory = f"outputs"
+            create_directory_if_not_exists(directory)
+            file_name = f"{directory}/instructions.json"
+            with open(file_name, 'w') as file:
+                json.dump(instructions, file, indent=4)
+                file.close()
